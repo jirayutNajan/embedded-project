@@ -7,6 +7,9 @@
 #include <BlynkSimpleEsp32.h>
 
 #include "DHT.h"
+#include <HTTPClient.h>
+
+String GAS_URL = "https://script.google.com/macros/s/AKfycbxOUED034r8Vyhbjur597YmROFteTDIbY1LF1FFCQjea1lLRFVQY6xT50GLGUejPhG5aA/exec"; 
 
 // ------- PIN DEFINITIONS -------
 #define DHTPIN 4
@@ -17,32 +20,38 @@
 #define VCC 3.3
 
 // ------- WIFI -------
-char ssid[] = "wifi_username";
-char pass[] = "wifi_password";
+char ssid[] = "T";
+char pass[] = "homeless";
 
 DHT dht(DHTPIN, DHTTYPE);
 BlynkTimer timer;
+
+double soundValue;
+int WaterValue;
+double HumidValue;
+double TempValue;
+
 
 // =====================================================
 // Send DHT11 temperature & humidity
 // =====================================================
 void sendTempHumidity()
 {
-  float h = dht.readHumidity();
-  float t = dht.readTemperature();
+  HumidValue = dht.readHumidity();
+  TempValue = dht.readTemperature();
 
-  if (isnan(h) || isnan(t)) {
+  if (isnan(HumidValue) || isnan(TempValue)) {
     Serial.println("Failed to read from DHT sensor!");
     return;
   }
 
   Serial.print("Humidity: ");
-  Serial.print(h);
+  Serial.print(HumidValue);
   Serial.print(" %, Temp: ");
-  Serial.println(t);
+  Serial.println(TempValue);
 
-  Blynk.virtualWrite(V2, h);  // Humidity
-  Blynk.virtualWrite(V3, t);  // Temperature
+  Blynk.virtualWrite(V2, HumidValue);  // Humidity
+  Blynk.virtualWrite(V3, TempValue);  // Temperature
 }
 
 // =====================================================
@@ -50,8 +59,8 @@ void sendTempHumidity()
 // =====================================================
 void sendSoundLevel()
 {
-  int rawValue = analogRead(SOUND_PIN);
-  float voltage = rawValue * VCC / 4095.0;
+  soundValue = analogRead(SOUND_PIN);
+  float voltage = soundValue * VCC / 4095.0;
 
   Serial.print("Sound Voltage: ");
   Serial.println(voltage);
@@ -64,12 +73,35 @@ void sendSoundLevel()
 // =====================================================
 void sendWaterLevel()
 {
-  int rawValue = analogRead(WATER_LEVEL_PIN);
+  WaterValue = analogRead(WATER_LEVEL_PIN);
 
   Serial.print("Water Level: ");
-  Serial.println(rawValue);
+  Serial.println(WaterValue);
 
-  Blynk.virtualWrite(V1, rawValue);  // already created
+  Blynk.virtualWrite(V1, WaterValue);  // already created
+}
+
+void sendToGoogleSheet() {
+  if(WiFi.status() == WL_CONNECTED) {
+    HTTPClient http;
+
+    float temp = TempValue;
+    float humid = HumidValue;
+    int water = WaterValue;
+
+    String url = GAS_URL + "?temp=" + String(temp) + "&humid=" + String(humid)+"&water=" + String(water);
+
+    http.begin(url.c_str());
+    http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+
+    int httpCode = http.GET();
+
+    if (httpCode > 0) {
+      Serial.println(http.getString());
+    }
+
+    http.end();
+  }
 }
 
 void setup()
@@ -86,6 +118,7 @@ void setup()
   timer.setInterval(2000L, sendWaterLevel);
   timer.setInterval(2500L, sendTempHumidity);
   timer.setInterval(3000L, sendSoundLevel);
+  timer.setInterval(60000L, sendToGoogleSheet);
 }
 
 void loop()
