@@ -11,7 +11,7 @@
 
 String GAS_URL = "https://script.google.com/macros/s/AKfycbxOUED034r8Vyhbjur597YmROFteTDIbY1LF1FFCQjea1lLRFVQY6xT50GLGUejPhG5aA/exec"; 
 
-// ------- PIN DEFINITIONS -------
+// ------- PIN CLARIFICATION -------
 #define DHTPIN 4
 #define DHTTYPE DHT11
 
@@ -22,6 +22,7 @@ String GAS_URL = "https://script.google.com/macros/s/AKfycbxOUED034r8Vyhbjur597Y
 // ------- WIFI -------
 char ssid[] = "T";
 char pass[] = "homeless";
+const int LOW_WATER_THRESHOLD = 500; 
 
 DHT dht(DHTPIN, DHTTYPE);
 BlynkTimer timer;
@@ -32,9 +33,7 @@ double HumidValue;
 double TempValue;
 
 
-// =====================================================
-// Send DHT11 temperature & humidity
-// =====================================================
+//DHT11
 void sendTempHumidity()
 {
   HumidValue = dht.readHumidity();
@@ -54,9 +53,7 @@ void sendTempHumidity()
   Blynk.virtualWrite(V3, TempValue);  // Temperature
 }
 
-// =====================================================
-// Send sound voltage level
-// =====================================================
+//Sound
 void sendSoundLevel()
 {
   soundValue = analogRead(SOUND_PIN);
@@ -68,19 +65,21 @@ void sendSoundLevel()
   Blynk.virtualWrite(V4, voltage);
 }
 
-// =====================================================
-// Send water level (RAW ADC)
-// =====================================================
+//Water Level
 void sendWaterLevel()
 {
   WaterValue = analogRead(WATER_LEVEL_PIN);
+  Blynk.virtualWrite(V1, WaterValue); 
+
+  if (WaterValue < LOW_WATER_THRESHOLD) {
+    Blynk.logEvent("water_alert", "Water level too low: " + String(WaterValue)); 
+  }
 
   Serial.print("Water Level: ");
   Serial.println(WaterValue);
-
-  Blynk.virtualWrite(V1, WaterValue);  // already created
 }
 
+//send data from sensor to google sheets
 void sendToGoogleSheet() {
   if(WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
@@ -97,7 +96,11 @@ void sendToGoogleSheet() {
     int httpCode = http.GET();
 
     if (httpCode > 0) {
+      Serial.print("Google Sheet Response: ");
       Serial.println(http.getString());
+    } else {
+      Serial.print("Google Sheet HTTP Error: ");
+      Serial.println(httpCode);
     }
 
     http.end();
@@ -108,17 +111,13 @@ void setup()
 {
   Serial.begin(115200);
   dht.begin();
-
   pinMode(SOUND_PIN, INPUT);
   pinMode(WATER_LEVEL_PIN, INPUT);
-
   Blynk.begin(BLYNK_AUTH_TOKEN, ssid, pass);
-
-  // Timers (every 2 seconds)
   timer.setInterval(2000L, sendWaterLevel);
   timer.setInterval(2500L, sendTempHumidity);
   timer.setInterval(3000L, sendSoundLevel);
-  timer.setInterval(60000L, sendToGoogleSheet);
+  timer.setInterval(60000L, sendToGoogleSheet); 
 }
 
 void loop()
